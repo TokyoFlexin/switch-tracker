@@ -1,4 +1,10 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>My Switch OLED</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='5' width='12' height='22' rx='6' fill='none' stroke='%23e60012' stroke-width='3'/%3E%3Crect x='17' y='5' width='12' height='22' rx='6' fill='%23e60012'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=M+PLUS+Rounded+1c:wght@400;500;800&display=swap">
 <style>
@@ -14,11 +20,13 @@
 :root[data-theme="dark"]{--bg:#2d2d2d;--tile:#464646;--fg:#fff;--muted:#a9a9a9;--line:#4b4b4b;--sel-text:#4fd6f2;--sheet:#3a3a3a;--sheet-fg:#fff;color-scheme:dark}
 
 *{box-sizing:border-box}
-body{background:var(--bg);color:var(--fg);font:500 15px/1.5 var(--ui);-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--bg);color:var(--fg);font:500 15px/1.5 var(--ui);-webkit-font-smoothing:antialiased}
+img{max-width:100%}
+[hidden]{display:none!important}
 button,input{font:inherit;color:inherit}
 button{cursor:pointer;background:none;border:0;padding:0}
 :focus-visible{outline:3px solid var(--sel);outline-offset:3px}
-.home{max-width:1080px;margin:0 auto;padding:18px 16px 0;min-height:100%;display:flex;flex-direction:column}
+.home{max-width:1080px;margin:0 auto;padding:calc(18px + env(safe-area-inset-top,0px)) 16px 0;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
 
 /* top bar */
 .top{display:flex;align-items:center;gap:12px}
@@ -165,6 +173,8 @@ dialog::backdrop{background:rgba(40,0,4,.6)}
 @media (max-width:640px){.hero{grid-template-columns:1fr}.polaroid{max-width:260px;margin:0 auto}.day span{font-size:9px}.foot .hint{display:none}}
 @media (prefers-reduced-motion:reduce){.screen,.screen.open,.screen .in{transition:none}.cart.drop,.tile.on{animation:none}}
 </style>
+</head>
+<body>
 
 <main class="home" id="home">
   <div class="top">
@@ -198,7 +208,7 @@ dialog::backdrop{background:rgba(40,0,4,.6)}
   </nav>
 
   <footer class="foot">
-    <span id="saveNote">Switch OLED · white</span>
+    <span>Saved in this browser</span>
     <span class="hint"><span class="btn-glyph">←</span><span class="btn-glyph">→</span> Move</span>
     <span class="hint"><span class="btn-glyph">A</span> Open</span>
   </footer>
@@ -272,10 +282,9 @@ const STATUSES = ["Want","Owned","Playing","Beaten"];
 const STAGES = ["Bought","Posted","In transit","Out for delivery","Delivered"];
 const DAY = 864e5, BOUGHT = new Date(2026,9,14), WIN_START = new Date(2026,9,19), WIN_END = new Date(2026,9,21);
 
-// Everything the page shows. With the db capability it mirrors the artifact's database;
-// without it (a local copy) it lives in memory only.
+// Everything the page shows, saved in this browser's localStorage.
 const data = {games: [], acc: [], tracker: {manualStage: null, tracking: ""}};
-let db = null, assets = null;
+const KEY = "switch-oled-v1";
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -286,38 +295,37 @@ const ARMED_MS = 3000;
 
 let toastTimer;
 function toast(msg){ const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 3200); }
-function saveFailed(e){
-  toast(e?.code === "invalid_argument" ? "You can look at this page but not change it."
-      : e?.code === "quota_exceeded" ? "The page is full. Remove something first."
-      : "Couldn't save that. Try again.");
+function save(){
+  try { localStorage.setItem(KEY, JSON.stringify(data)); }
+  catch { toast("Couldn't save. Your browser's storage is full or turned off."); }
 }
 
-// Rows from the database are untrusted: keep only fields and values the page knows.
-const cleanGame = (id, d) => ({
-  id, added: Number(d.added) || 0,
+// Saved data may be old or hand-edited: keep only fields and values the page knows.
+const cleanGame = d => ({
+  id: String(d.id), added: Number(d.added) || 0,
   slug: CATALOG[d.slug] ? d.slug : null,
   name: String(d.name || "").slice(0, 80),
   status: STATUSES.includes(d.status) ? d.status : "Want",
-  art: /^[0-9a-f]{32}$/.test(d.art) ? d.art : null,
+  art: /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(d.art) ? d.art : null,
 });
-const cleanAcc = (id, d) => ({id, added: Number(d.added) || 0, name: String(d.name || "").slice(0, 80), price: Math.max(0, Number(d.price) || 0), got: d.got === true});
+const cleanAcc = d => ({id: String(d.id), added: Number(d.added) || 0, name: String(d.name || "").slice(0, 80), price: Math.max(0, Number(d.price) || 0), got: d.got === true});
 const body = ({id, ...rest}) => rest;
+function load(){
+  try {
+    const d = JSON.parse(localStorage.getItem(KEY)) || {}, t = d.tracker || {};
+    data.games = (d.games || []).map(cleanGame).filter(g => g.name);
+    data.acc = (d.acc || []).map(cleanAcc).filter(a => a.name);
+    data.tracker = {manualStage: Number.isInteger(t.manualStage) && t.manualStage >= 0 && t.manualStage < 5 ? t.manualStage : null, tracking: String(t.tracking || "").slice(0, 60)};
+  } catch {}
+}
 
-// One write path for both modes. body === null deletes.
-async function put(coll, id, value){
-  if (!db){
-    const list = data[coll], i = list.findIndex(x => x.id === id);
-    if (value === null){ if (i >= 0) list.splice(i, 1); } else if (i < 0) list.push({id, ...value}); else list[i] = {id, ...value};
-    return render[coll]();
-  }
-  try { const ref = db.collection(coll).doc(id); await (value === null ? ref.delete() : ref.set(value)); }
-  catch (e) { saveFailed(e); throw e; }
+// One write path: change the list, save, redraw. value === null deletes.
+function put(coll, id, value){
+  const list = data[coll], i = list.findIndex(x => x.id === id);
+  if (value === null){ if (i >= 0) list.splice(i, 1); } else if (i < 0) list.push({id, ...value}); else list[i] = {id, ...value};
+  save(); render[coll]();
 }
-async function saveTracker(patch){
-  data.tracker = {...data.tracker, ...patch};
-  renderTrack();
-  if (db) try { await db.doc("tracker/main").set(data.tracker); } catch (e) { saveFailed(e); }
-}
+function saveTracker(patch){ data.tracker = {...data.tracker, ...patch}; save(); renderTrack(); }
 
 // Two taps to delete: the first arms the button, the second within 3 s acts.
 function twoStep(btn, armedText, act){
@@ -368,7 +376,7 @@ function renderTrack(){
 $("trackNo").onchange = e => saveTracker({tracking: e.target.value.trim()});
 
 /* ---------- game cards ---------- */
-const artSrc = g => g.art ? "/_blob/" + g.art : g.slug ? "covers/" + g.slug + ".jpg" : null;
+const artSrc = g => g.art || (g.slug ? "covers/" + g.slug + ".jpg" : null);
 function makeCart(g, tag = "div"){
   const c = el(tag, "cart"), src = artSrc(g);
   if (src){ const img = el("img"); img.src = src; img.alt = g.name; img.onerror = () => img.replaceWith(el("span", "txt", g.name)); c.append(img); }
@@ -390,7 +398,7 @@ function renderGames(){
       if (g.id === dropId){ cart.classList.add("drop"); dropId = null; }
       cart.onclick = () => openGame(g.id);
       const st = el("button", "st", g.status); st.dataset.s = g.status; st.title = "Change status";
-      st.onclick = () => put("games", g.id, {...body(g), status: STATUSES[(STATUSES.indexOf(g.status) + 1) % 4]}).catch(() => {});
+      st.onclick = () => put("games", g.id, {...body(g), status: STATUSES[(STATUSES.indexOf(g.status) + 1) % 4]});
       slot.append(cart, st);
     }
     kids.push(slot);
@@ -424,7 +432,7 @@ function findSlug(name){
   const partial = keys.filter(k => CATALOG[k].toLowerCase().includes(q));
   return partial.length === 1 ? partial[0] : null;
 }
-$("addGame").onsubmit = async e => {
+$("addGame").onsubmit = e => {
   e.preventDefault();
   const name = $("gameName").value.trim(); if (!name) return;
   const slug = findSlug(name);
@@ -433,7 +441,7 @@ $("addGame").onsubmit = async e => {
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   clickSound(reduce ? 0 : .36);
   $("gameName").value = "";
-  try { await put("games", id, {slug, name: slug ? CATALOG[slug] : name, status: "Want", art: null, added: Date.now()}); } catch { return; }
+  put("games", id, {slug, name: slug ? CATALOG[slug] : name, status: "Want", art: null, added: Date.now()});
   $("case").querySelector(".slot:nth-child(" + data.games.length + ")")?.scrollIntoView({block: "nearest", behavior: reduce ? "auto" : "smooth"});
 };
 $("catalog").replaceChildren(...Object.values(CATALOG).map(t => { const o = el("option"); o.value = t; return o; }));
@@ -448,31 +456,28 @@ function fillGame(){
   $("dlgSub").textContent = g.art ? "Your own cover art" : g.slug ? "Box art from the catalog" : "No cover art yet";
   $("dlgStatus").replaceChildren(el("legend", null, "Status"), ...STATUSES.map(s => {
     const b = el("button", null, s); b.type = "button"; b.dataset.s = s; b.setAttribute("aria-pressed", s === g.status);
-    b.onclick = () => put("games", g.id, {...body(g), status: s}).catch(() => {});
+    b.onclick = () => put("games", g.id, {...body(g), status: s});
     return b;
   }));
-  $("dlgUpload").hidden = !assets;
   $("dlgUploadTxt").textContent = g.art || g.slug ? "Use my own picture" : "Add cover art";
+}
+// Your own cover art is shrunk to label size and saved with the game.
+async function toCover(file){
+  const bmp = await createImageBitmap(file), s = Math.min(1, 360 / Math.max(bmp.width, bmp.height));
+  const c = el("canvas"); c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", .82);
 }
 $("dlgFile").onchange = async e => {
   const file = e.target.files[0], g = data.games.find(x => x.id === dlgId);
   e.target.value = "";
-  if (!file || !g || !assets) return;
-  $("dlgUploadTxt").textContent = "Uploading…";
-  try {
-    const r = await assets.upload(file);
-    const old = g.art;
-    await put("games", g.id, {...body(g), art: r.id});
-    if (old) assets.delete(old).catch(() => {});
-  } catch (err) {
-    toast({too_large: "That picture is too big. 20 MB max.", unsupported_type: "Use a JPG, PNG, WebP or GIF.", rate_limited: "Too many uploads. Wait a moment and try again."}[err?.code] || "Couldn't upload that picture.");
-  }
+  if (!file || !g) return;
+  try { put("games", g.id, {...body(g), art: await toCover(file)}); }
+  catch { toast("Couldn't read that picture. Try a JPG or PNG."); }
   fillGame();
 };
-$("dlgRemove").onclick = e => twoStep(e.currentTarget, "Tap again to remove", async () => {
-  const g = data.games.find(x => x.id === dlgId); if (!g) return;
-  $("gameDlg").close();
-  try { await put("games", g.id, null); if (g.art && assets) assets.delete(g.art).catch(() => {}); } catch {}
+$("dlgRemove").onclick = e => twoStep(e.currentTarget, "Tap again to remove", () => {
+  $("gameDlg").close(); put("games", dlgId, null);
 });
 $("dlgDone").onclick = () => $("gameDlg").close();
 
@@ -481,10 +486,10 @@ function renderAcc(){
   const rows = data.acc.map(a => {
     const row = el("div", "item" + (a.got ? " got" : ""));
     const box = el("input"); box.type = "checkbox"; box.checked = a.got; box.id = "acc-" + a.id;
-    box.onchange = () => put("acc", a.id, {...body(a), got: box.checked}).catch(() => { box.checked = a.got; });
+    box.onchange = () => put("acc", a.id, {...body(a), got: box.checked});
     const nm = el("label", "nm", a.name); nm.htmlFor = box.id;
     const x = el("button", "x", "Remove"); x.setAttribute("aria-label", "Remove " + a.name);
-    x.onclick = () => twoStep(x, "Sure?", () => put("acc", a.id, null).catch(() => {}));
+    x.onclick = () => twoStep(x, "Sure?", () => put("acc", a.id, null));
     row.append(box, nm, el("span", "pr", aud(a.price)), x);
     return row;
   });
@@ -499,7 +504,7 @@ $("addAcc").onsubmit = e => {
   e.preventDefault();
   const name = $("accName").value.trim(); if (!name) return;
   const price = Math.max(0, Math.round((Number($("accPrice").value) || 0) * 100) / 100);
-  put("acc", newId(), {name, price, got: false, added: Date.now()}).catch(() => {});
+  put("acc", newId(), {name, price, got: false, added: Date.now()});
   $("accName").value = ""; $("accPrice").value = ""; $("accName").focus();
 };
 
@@ -553,20 +558,9 @@ navigator.getBattery?.().then(b => {
   show(); b.onlevelchange = show;
 }).catch(() => {});
 
-select(0); renderTrack(); renderGames(); renderAcc();
-
-/* ---------- live data ---------- */
-(async () => {
-  db = await window.claude?.use?.("db") ?? null;
-  if (!db){ $("saveNote").textContent = "This copy doesn't save. Open it on Claude to keep changes."; return; }
-  assets = await window.claude.use("assets");
-  const dead = () => toast("Lost the connection to your saved data. Reload the page.");
-  db.collection("games").orderBy("added").onSnapshot(s => { data.games = s.docs.map(d => cleanGame(d.id, d.data())); renderGames(); }, dead);
-  db.collection("acc").orderBy("added").onSnapshot(s => { data.acc = s.docs.map(d => cleanAcc(d.id, d.data())); renderAcc(); }, dead);
-  db.doc("tracker/main").onSnapshot(s => {
-    const d = s.data() || {};
-    data.tracker = {manualStage: Number.isInteger(d.manualStage) && d.manualStage >= 0 && d.manualStage < 5 ? d.manualStage : null, tracking: String(d.tracking || "").slice(0, 60)};
-    renderTrack();
-  }, dead);
-})();
+load(); select(0); renderTrack(); renderGames(); renderAcc();
+// Another tab changed the saved data: pick it up.
+addEventListener("storage", e => { if (e.key === KEY){ load(); renderTrack(); renderGames(); renderAcc(); } });
 </script>
+</body>
+</html>
