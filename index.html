@@ -1,0 +1,572 @@
+<title>My Switch OLED</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=M+PLUS+Rounded+1c:wght@400;500;800&display=swap">
+<style>
+/* Layout: the Switch home menu (tile row + round buttons + button-hint footer); every tile opens a full Nintendo-red screen. */
+:root{
+  --bg:#ebebeb; --tile:#fff; --fg:#2d2d2d; --muted:#6a6a6a; --line:#d2d2d2;
+  --sel:#13c3e6; --sel-text:#08799a; --red:#e60012; --red-dark:#a8000d; --on-red:#fff;
+  --case:#2a2a2e; --slot:#1c1c1f; --cart:#3b3b3e; --sheet:#fff; --sheet-fg:#2d2d2d;
+  --ui:"M PLUS Rounded 1c","Hiragino Maru Gothic ProN","Arial Rounded MT Bold",system-ui,sans-serif;
+  --display:"Dela Gothic One","M PLUS Rounded 1c",Impact,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#2d2d2d;--tile:#464646;--fg:#fff;--muted:#a9a9a9;--line:#4b4b4b;--sel-text:#4fd6f2;--sheet:#3a3a3a;--sheet-fg:#fff;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#2d2d2d;--tile:#464646;--fg:#fff;--muted:#a9a9a9;--line:#4b4b4b;--sel-text:#4fd6f2;--sheet:#3a3a3a;--sheet-fg:#fff;color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:500 15px/1.5 var(--ui);-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0;padding:0}
+:focus-visible{outline:3px solid var(--sel);outline-offset:3px}
+.home{max-width:1080px;margin:0 auto;padding:18px 16px 0;min-height:100%;display:flex;flex-direction:column}
+
+/* top bar */
+.top{display:flex;align-items:center;gap:12px}
+.me{width:40px;height:40px;border-radius:50%;background:var(--red);color:#fff;display:grid;place-items:center;font-weight:800;border:3px solid var(--tile);box-shadow:0 0 0 1px var(--line)}
+.clock{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
+.batt{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
+.batt i{width:24px;height:12px;border:2px solid currentColor;border-radius:3px;position:relative;display:block}
+.batt i:after{content:"";position:absolute;right:-5px;top:2px;width:2px;height:4px;background:currentColor;border-radius:0 1px 1px 0}
+.batt b{position:absolute;inset:1px;width:var(--lvl,80%);background:currentColor;border-radius:1px}
+
+/* tile row */
+.label{margin:34px 0 10px;height:28px;font-size:19px;font-weight:800;color:var(--sel-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row{display:flex;gap:14px;overflow-x:auto;padding:8px 8px 18px;margin:0 -8px;scroll-snap-type:x mandatory;scrollbar-width:none}
+.row::-webkit-scrollbar{display:none}
+.tile{flex:none;width:clamp(150px,24vw,236px);aspect-ratio:1;border-radius:3px;background:var(--tile);position:relative;overflow:hidden;scroll-snap-align:start;outline:4px solid transparent;outline-offset:4px}
+.tile.on{outline-color:var(--sel);animation:pulse 1.1s ease-in-out infinite alternate}
+@keyframes pulse{to{outline-color:#8be6f9}}
+.tile img{width:100%;height:100%;object-fit:cover;display:block}
+.tile .tag{position:absolute;left:0;bottom:0;background:var(--red);color:#fff;font:400 15px/1 var(--display);padding:9px 12px 8px}
+.mosaic{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;height:100%;gap:2px;background:var(--tile)}
+.mosaic .none{grid-column:1/-1;grid-row:1/-1;display:grid;place-items:center;text-align:center;padding:16px;color:var(--muted);font-size:14px}
+.acc-tile{display:flex;flex-direction:column;justify-content:space-between;height:100%;padding:16px;text-align:left}
+.acc-tile small{color:var(--muted);font-size:13px}
+.acc-tile strong{font:400 clamp(26px,4vw,40px)/1 var(--display);color:var(--red)}
+
+/* round buttons */
+.dock{display:flex;justify-content:center;gap:18px;margin:26px 0 30px}
+.round{width:58px;height:58px;border-radius:50%;background:var(--tile);display:grid;place-items:center;box-shadow:0 1px 0 var(--line),0 0 0 1px var(--line);transition:transform .12s}
+.round:hover{transform:translateY(-2px)}
+.round svg{width:26px;height:26px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* footer hint bar, like the bottom of every Switch screen */
+.foot{margin-top:auto;border-top:1px solid var(--line);display:flex;align-items:center;gap:18px;padding:12px 4px calc(12px + env(safe-area-inset-bottom,0px));font-size:13px;color:var(--muted)}
+.foot .hint{display:flex;align-items:center;gap:6px}
+.foot .hint:nth-child(2){margin-left:auto}
+.btn-glyph{width:20px;height:20px;border-radius:50%;background:var(--fg);color:var(--bg);display:inline-grid;place-items:center;font-size:11px;font-weight:800;line-height:1}
+
+/* red screens */
+.screen{position:fixed;inset:0;background:var(--red);color:var(--on-red);overflow-y:auto;clip-path:inset(50% 50% 50% 50%);visibility:hidden;transition:clip-path .5s cubic-bezier(.2,.85,.25,1),visibility 0s .5s;z-index:5;padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px))}
+.screen.open{visibility:visible;transition:clip-path .5s cubic-bezier(.2,.85,.25,1)}
+.screen .in{max-width:980px;margin:0 auto;opacity:0;transform:translateY(10px);transition:opacity .2s,transform .2s}
+.screen.open .in{opacity:1;transform:none;transition-delay:.28s}
+.bar{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+.back{display:flex;align-items:center;gap:8px;font-weight:800;padding:6px 12px 6px 6px;border-radius:99px;background:rgba(0,0,0,.14)}
+.back .btn-glyph{background:#fff;color:var(--red)}
+.bar h2{font:400 clamp(20px,3vw,26px)/1.1 var(--display);margin:0}
+.chip{margin-left:auto;background:#fff;color:var(--red);font-weight:800;font-size:13px;padding:5px 12px;border-radius:99px;white-space:nowrap}
+
+/* tracker */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,300px);gap:24px;align-items:center}
+.count{font:400 clamp(72px,15vw,148px)/.82 var(--display);letter-spacing:-.02em}
+.count small{display:block;font:800 clamp(18px,2.4vw,24px)/1.2 var(--ui);letter-spacing:0;margin-top:14px}
+.polaroid{background:#fff;padding:10px 10px 30px;transform:rotate(2.5deg);box-shadow:0 10px 24px rgba(80,0,5,.35);position:relative;max-width:100%;margin:0}
+.polaroid img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover}
+.polaroid figcaption{position:absolute;left:12px;bottom:7px;color:#555;font-size:12px}
+.days{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:4px;margin:34px 0 8px}
+.day{border-radius:6px;padding:8px 4px;text-align:center;background:rgba(0,0,0,.14)}
+.day b{display:block;font:400 clamp(16px,2.6vw,24px)/1.1 var(--display)}
+.day span{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;opacity:.85}
+.day.past{opacity:.55}
+.day.win{background:#fff;color:var(--red)}
+.day.today{box-shadow:0 0 0 3px var(--sel)}
+.days-note{display:flex;justify-content:space-between;font-size:12px;font-weight:800;opacity:.85}
+.stages{display:flex;flex-wrap:wrap;gap:8px;margin:26px 0}
+.stage{padding:8px 14px;border-radius:99px;border:2px solid rgba(255,255,255,.5);font-weight:800;font-size:14px}
+.stage.done{background:rgba(255,255,255,.18);border-color:transparent}
+.stage.now{background:#fff;color:var(--red);border-color:#fff}
+.reset{font-size:13px;text-decoration:underline;align-self:center;opacity:.85}
+.track{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--red-dark);padding:12px;border-radius:12px}
+.track label{font-weight:800;font-size:14px;width:100%}
+.track input{flex:1 1 200px;min-width:0;background:#fff;color:#222;border:0;border-radius:8px;padding:10px 12px;font-variant-numeric:tabular-nums}
+.link{background:#fff;color:var(--red);border-radius:8px;padding:10px 14px;font-weight:800;text-decoration:none;white-space:nowrap}
+.order{margin-top:14px;font-size:13px;opacity:.85}
+
+/* forms on red */
+.add{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.add input{flex:1 1 220px;min-width:0;border:0;border-radius:8px;padding:11px 12px;background:#fff;color:#222}
+.add input[type=number]{flex:0 1 130px}
+.add button{background:#fff;color:var(--red);border-radius:8px;padding:11px 16px;font-weight:800}
+
+/* game card case */
+.case{background:var(--case);border-radius:18px;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px;box-shadow:inset 0 0 0 2px #3a3a3f,0 14px 30px rgba(60,0,4,.4)}
+.slot{background:var(--slot);border-radius:8px;padding:10px 10px 6px;box-shadow:inset 0 3px 6px rgba(0,0,0,.6);display:flex;flex-direction:column;align-items:center;gap:6px;min-height:150px}
+.cart{width:100%;max-width:92px;aspect-ratio:21/27;background:var(--cart);border-radius:5px 4px 5px 5px;clip-path:polygon(0 0,calc(100% - 9px) 0,100% 9px,100% 100%,0 100%);position:relative;padding:15% 7% 7%;display:block}
+.cart:before{content:"";position:absolute;top:5%;left:22%;right:22%;height:3px;border-radius:2px;background:#58585c}
+.cart img{width:100%;height:100%;object-fit:cover;border-radius:3px;display:block}
+.cart .txt{width:100%;height:100%;border-radius:3px;background:#f2f2f2;color:var(--red);font:400 11px/1.1 var(--display);display:flex;align-items:flex-end;padding:5px;overflow:hidden;text-align:left;word-break:break-word}
+.cart.big{max-width:110px;flex:none}
+.cart.big .txt{font-size:13px}
+.cart.drop{animation:drop .62s cubic-bezier(.45,0,.75,1) both}
+@keyframes drop{0%{transform:translateY(-260px) rotate(-9deg)}58%{transform:translateY(0) rotate(0)}68%{transform:scale(1.04,.92)}82%{transform:translateY(-8px) scale(.99,1.02)}100%{transform:none}}
+.st{font-size:11px;font-weight:800;color:#ddd;display:flex;align-items:center;gap:5px;padding:2px 6px;border-radius:99px}
+.st:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--dot,#888)}
+[data-s="Owned"]{--dot:#fff}[data-s="Playing"]{--dot:var(--sel)}[data-s="Beaten"]{--dot:#f5c400}
+.case-foot{color:#bbb;font-size:13px;grid-column:1/-1;display:flex;justify-content:space-between;gap:12px}
+
+/* accessories */
+.list{background:#fff;color:#2d2d2d;border-radius:14px;overflow:hidden}
+.item{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:12px 12px 12px 16px;border-top:1px solid #eee}
+.item:first-child{border-top:0}
+.item input{width:22px;height:22px;accent-color:var(--red);margin:0}
+.item .nm{overflow-wrap:anywhere}
+.item.got .nm{text-decoration:line-through;color:#888}
+.item .pr{font-variant-numeric:tabular-nums;font-weight:800}
+.x{color:#888;font-size:13px;font-weight:800;padding:6px 8px;border-radius:6px}
+.x:hover,.x[data-armed]{color:var(--red);background:#fdecee}
+.list .none{padding:18px 16px;color:#666}
+.totals{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-top:16px;flex-wrap:wrap}
+.totals strong{display:block;font:400 clamp(30px,6vw,46px)/1 var(--display)}
+.totals .spent{text-align:right;opacity:.85}
+.totals .spent strong{font-size:clamp(20px,3vw,26px)}
+
+/* album */
+.album{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.album button img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:4px;background:#fff;display:block}
+
+/* sheets */
+dialog{border:0;border-radius:18px;padding:20px;width:min(440px,calc(100vw - 32px));background:var(--sheet);color:var(--sheet-fg)}
+dialog::backdrop{background:rgba(40,0,4,.6)}
+.dlg-head{display:flex;gap:16px;align-items:center;margin-bottom:18px}
+.dlg-head h3{font:400 20px/1.2 var(--display);margin:0 0 4px;overflow-wrap:anywhere}
+.dlg-head p{margin:0;color:var(--muted);font-size:13px}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;border:0;padding:0;margin:0 0 16px}
+.seg legend{font-weight:800;font-size:13px;margin-bottom:6px;padding:0}
+.seg button{border:2px solid var(--line);border-radius:10px;padding:8px 4px;font-weight:800;font-size:13px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.seg button:before{content:"";width:9px;height:9px;border-radius:50%;background:var(--dot,#888);box-shadow:0 0 0 1px var(--line)}
+.seg button[aria-pressed=true]{border-color:var(--red);background:var(--red);color:#fff}
+.upload{display:block;border:2px dashed var(--line);border-radius:10px;padding:12px;text-align:center;font-weight:800;cursor:pointer;margin-bottom:16px}
+.upload:focus-within{outline:3px solid var(--sel)}
+.upload input{position:absolute;opacity:0;width:1px;height:1px}
+.dlg-actions{display:flex;justify-content:space-between;gap:8px}
+.dlg-actions button{padding:10px 16px;border-radius:10px;font-weight:800}
+.danger{color:var(--red)}
+.danger[data-armed]{background:var(--red);color:#fff}
+.primary{background:var(--fg);color:var(--bg)}
+#photoDlg{width:min(1000px,calc(100vw - 32px));padding:10px}
+#photoDlg img{width:100%;display:block;border-radius:10px}
+#photoDlg form{text-align:right;margin-top:8px}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);opacity:0;background:#1d1d1f;color:#fff;padding:10px 16px;border-radius:99px;font-weight:800;font-size:14px;z-index:20;transition:opacity .2s,transform .2s;pointer-events:none;max-width:calc(100vw - 32px);text-align:center}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+@media (max-width:640px){.hero{grid-template-columns:1fr}.polaroid{max-width:260px;margin:0 auto}.day span{font-size:9px}.foot .hint{display:none}}
+@media (prefers-reduced-motion:reduce){.screen,.screen.open,.screen .in{transition:none}.cart.drop,.tile.on{animation:none}}
+</style>
+
+<main class="home" id="home">
+  <div class="top">
+    <span class="me" aria-hidden="true">S</span>
+    <span>Sahel</span>
+    <span class="clock" id="clock"></span>
+    <span class="batt" id="batt" hidden><i><b></b></i><span></span></span>
+  </div>
+
+  <div class="label" id="label" aria-live="polite"></div>
+  <div class="row" role="list">
+    <button class="tile" role="listitem" data-open="track" data-label="Switch OLED · arriving Mon 19 to Wed 21 Oct">
+      <img src="console/ebay-3.jpg" alt="Your white Switch OLED, from the eBay listing">
+      <span class="tag" id="tileTag"></span>
+    </button>
+    <button class="tile" role="listitem" data-open="games" data-label="Game cards" aria-label="Game cards">
+      <div class="mosaic" id="mosaic"></div>
+    </button>
+    <button class="tile" role="listitem" data-open="acc" data-label="Accessories">
+      <div class="acc-tile"><small>Left to spend</small><strong id="accTile">AU$0</strong><small id="accCount"></small></div>
+    </button>
+    <button class="tile" role="listitem" data-open="album" data-label="Album · 10 photos from the listing">
+      <img src="console/ebay-1.jpg" alt="The console in its box with the dock">
+    </button>
+  </div>
+
+  <nav class="dock" aria-label="Shortcuts">
+    <button class="round" data-open="games" data-focus="gameName" title="Add a game"><svg viewBox="0 0 24 24" fill="none" stroke="#e60012" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span class="sr">Add a game</span></button>
+    <button class="round" data-open="track" data-focus="trackNo" title="Tracking number"><svg viewBox="0 0 24 24" fill="none" stroke="#f08c00" stroke-width="2.4" stroke-linejoin="round"><path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/></svg><span class="sr">Tracking number</span></button>
+    <button class="round" data-open="album" title="Album"><svg viewBox="0 0 24 24" fill="none" stroke="#1a8fe3" stroke-width="2.4" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/></svg><span class="sr">Album</span></button>
+  </nav>
+
+  <footer class="foot">
+    <span id="saveNote">Switch OLED · white</span>
+    <span class="hint"><span class="btn-glyph">←</span><span class="btn-glyph">→</span> Move</span>
+    <span class="hint"><span class="btn-glyph">A</span> Open</span>
+  </footer>
+</main>
+
+<section class="screen" id="track" aria-label="Delivery tracker">
+  <div class="in">
+    <div class="bar"><button class="back"><span class="btn-glyph">B</span>Back</button><h2>My Switch OLED</h2><span class="chip" id="chip"></span></div>
+    <div class="hero">
+      <div class="count" id="count"></div>
+      <figure class="polaroid"><img src="console/ebay-2.jpg" alt="Your Switch OLED with the Joy-Con attached"><figcaption>From the eBay listing</figcaption></figure>
+    </div>
+    <div class="days" id="days"></div>
+    <div class="days-note"><span>Bought Wed 14 Oct</span><span>Delivery window</span></div>
+    <div class="stages" id="stages"></div>
+    <div class="track">
+      <label for="trackNo">Tracking number</label>
+      <input id="trackNo" placeholder="Paste it from eBay when the seller posts it" autocomplete="off" maxlength="60">
+      <a class="link" id="auspost" href="https://auspost.com.au/mypost/track/" target="_blank" rel="noopener">Track on AusPost</a>
+    </div>
+    <p class="order">Bought on eBay for AU$249.99 · item 227563504299 · box, dock and cables included</p>
+  </div>
+</section>
+
+<section class="screen" id="games" aria-label="Game cards">
+  <div class="in">
+    <div class="bar"><button class="back"><span class="btn-glyph">B</span>Back</button><h2>Game cards</h2></div>
+    <form class="add" id="addGame">
+      <input id="gameName" list="catalog" placeholder="Mario Kart 8 Deluxe" autocomplete="off" aria-label="Game name" required maxlength="80">
+      <button>Add game</button>
+    </form>
+    <datalist id="catalog"></datalist>
+    <div class="case" id="case"></div>
+  </div>
+</section>
+
+<section class="screen" id="acc" aria-label="Accessories">
+  <div class="in">
+    <div class="bar"><button class="back"><span class="btn-glyph">B</span>Back</button><h2>Accessories</h2></div>
+    <form class="add" id="addAcc">
+      <input id="accName" placeholder="Carry case" aria-label="Accessory" required maxlength="80" autocomplete="off">
+      <input id="accPrice" type="number" inputmode="decimal" min="0" step="0.01" placeholder="AU$" aria-label="Price in AUD">
+      <button>Add</button>
+    </form>
+    <div class="list" id="accList"></div>
+    <div class="totals"><div>Left to spend<strong id="accLeft"></strong></div><div class="spent">Already spent<strong id="accSpent"></strong></div></div>
+  </div>
+</section>
+
+<section class="screen" id="album" aria-label="Album">
+  <div class="in">
+    <div class="bar"><button class="back"><span class="btn-glyph">B</span>Back</button><h2>Album</h2><span class="chip">From the listing</span></div>
+    <div class="album" id="albumGrid"></div>
+  </div>
+</section>
+
+<dialog id="gameDlg" aria-labelledby="dlgName">
+  <div class="dlg-head"><div id="dlgCart"></div><div><h3 id="dlgName"></h3><p id="dlgSub"></p></div></div>
+  <fieldset class="seg" id="dlgStatus"><legend>Status</legend></fieldset>
+  <label class="upload" id="dlgUpload"><input type="file" id="dlgFile" accept="image/png,image/jpeg,image/webp,image/gif"><span id="dlgUploadTxt"></span></label>
+  <div class="dlg-actions"><button class="danger" id="dlgRemove">Remove from case</button><button class="primary" id="dlgDone">Done</button></div>
+</dialog>
+
+<dialog id="photoDlg" aria-label="Listing photo"><img id="photoBig" alt=""><form method="dialog"><button class="primary" style="padding:8px 14px;border-radius:8px;font-weight:800">Close</button></form></dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const CATALOG = {"animal-crossing-nh":"Animal Crossing: New Horizons","astral-chain":"Astral Chain","bayonetta-3":"Bayonetta 3","celeste":"Celeste","cuphead":"Cuphead","dk-tropical-freeze":"Donkey Kong Country: Tropical Freeze","fire-emblem-engage":"Fire Emblem Engage","fire-emblem-three-houses":"Fire Emblem: Three Houses","hades":"Hades","hollow-knight":"Hollow Knight","kirby-forgotten-land":"Kirby and the Forgotten Land","luigis-mansion-3":"Luigi's Mansion 3","mario-3d-world-bowsers-fury":"Super Mario 3D World + Bowser's Fury","mario-kart-8-deluxe":"Mario Kart 8 Deluxe","mario-maker-2":"Super Mario Maker 2","mario-odyssey":"Super Mario Odyssey","mario-party-jamboree":"Super Mario Party Jamboree","mario-party-superstars":"Mario Party Superstars","mario-rabbids-sparks-of-hope":"Mario + Rabbids Sparks of Hope","mario-rpg":"Super Mario RPG","mario-tennis-aces":"Mario Tennis Aces","mario-wonder":"Super Mario Bros. Wonder","metroid-dread":"Metroid Dread","metroid-prime-remastered":"Metroid Prime Remastered","monster-hunter-rise":"Monster Hunter Rise","octopath-traveler":"Octopath Traveler","overcooked-2":"Overcooked! 2","paper-mario-origami-king":"Paper Mario: The Origami King","pikmin-4":"Pikmin 4","pokemon-legends-arceus":"Pokémon Legends: Arceus","pokemon-lets-go":"Pokémon: Let's Go, Pikachu! / Eevee!","pokemon-scarlet-violet":"Pokémon Scarlet / Violet","pokemon-sword-shield":"Pokémon Sword / Shield","princess-peach-showtime":"Princess Peach: Showtime!","ring-fit":"Ring Fit Adventure","smash-ultimate":"Super Smash Bros. Ultimate","splatoon-3":"Splatoon 3","stardew-valley":"Stardew Valley","switch-sports":"Nintendo Switch Sports","xenoblade-3":"Xenoblade Chronicles 3","zelda-botw":"Zelda: Breath of the Wild","zelda-echoes-of-wisdom":"Zelda: Echoes of Wisdom","zelda-links-awakening":"Zelda: Link's Awakening","zelda-totk":"Zelda: Tears of the Kingdom"};
+const STATUSES = ["Want","Owned","Playing","Beaten"];
+const STAGES = ["Bought","Posted","In transit","Out for delivery","Delivered"];
+const DAY = 864e5, BOUGHT = new Date(2026,9,14), WIN_START = new Date(2026,9,19), WIN_END = new Date(2026,9,21);
+
+// Everything the page shows. With the db capability it mirrors the artifact's database;
+// without it (a local copy) it lives in memory only.
+const data = {games: [], acc: [], tracker: {manualStage: null, tracking: ""}};
+let db = null, assets = null;
+
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const today = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
+const aud = n => "AU$" + n.toLocaleString("en-AU", {minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2});
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const ARMED_MS = 3000;
+
+let toastTimer;
+function toast(msg){ const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 3200); }
+function saveFailed(e){
+  toast(e?.code === "invalid_argument" ? "You can look at this page but not change it."
+      : e?.code === "quota_exceeded" ? "The page is full. Remove something first."
+      : "Couldn't save that. Try again.");
+}
+
+// Rows from the database are untrusted: keep only fields and values the page knows.
+const cleanGame = (id, d) => ({
+  id, added: Number(d.added) || 0,
+  slug: CATALOG[d.slug] ? d.slug : null,
+  name: String(d.name || "").slice(0, 80),
+  status: STATUSES.includes(d.status) ? d.status : "Want",
+  art: /^[0-9a-f]{32}$/.test(d.art) ? d.art : null,
+});
+const cleanAcc = (id, d) => ({id, added: Number(d.added) || 0, name: String(d.name || "").slice(0, 80), price: Math.max(0, Number(d.price) || 0), got: d.got === true});
+const body = ({id, ...rest}) => rest;
+
+// One write path for both modes. body === null deletes.
+async function put(coll, id, value){
+  if (!db){
+    const list = data[coll], i = list.findIndex(x => x.id === id);
+    if (value === null){ if (i >= 0) list.splice(i, 1); } else if (i < 0) list.push({id, ...value}); else list[i] = {id, ...value};
+    return render[coll]();
+  }
+  try { const ref = db.collection(coll).doc(id); await (value === null ? ref.delete() : ref.set(value)); }
+  catch (e) { saveFailed(e); throw e; }
+}
+async function saveTracker(patch){
+  data.tracker = {...data.tracker, ...patch};
+  renderTrack();
+  if (db) try { await db.doc("tracker/main").set(data.tracker); } catch (e) { saveFailed(e); }
+}
+
+// Two taps to delete: the first arms the button, the second within 3 s acts.
+function twoStep(btn, armedText, act){
+  if (btn.dataset.armed){ act(); return; }
+  const was = btn.textContent; btn.dataset.armed = 1; btn.textContent = armedText;
+  setTimeout(() => { delete btn.dataset.armed; btn.textContent = was; }, ARMED_MS);
+}
+
+/* ---------- tracker ---------- */
+function autoStage(t){                       // where it probably is, going by the calendar
+  const d = Math.round((t - BOUGHT) / DAY);
+  return t >= WIN_START ? 3 : d >= 2 ? 2 : d >= 1 ? 1 : 0;
+}
+function renderTrack(){
+  const t = today(), manual = data.tracker.manualStage, stage = manual ?? autoStage(t);
+  const a = Math.round((WIN_START - t) / DAY), b = Math.round((WIN_END - t) / DAY);
+  let big, small, tag;
+  if (stage === 4){ big = "Here!"; small = "Delivered. Go play."; tag = "Here!"; }
+  else if (a > 0){ big = a + "–" + b; small = "days until it lands"; tag = big + " days"; }
+  else if (b >= 0){ big = b === 0 ? "Today" : "Any day"; small = "It's inside the delivery window"; tag = big; }
+  else { big = "Late"; small = "Past Wed 21 Oct. Check the tracking number."; tag = "Late"; }
+  $("count").replaceChildren(big, el("small", null, small));
+  $("chip").textContent = manual === null && stage < 4 ? "Likely " + STAGES[stage].toLowerCase() : STAGES[stage];
+  $("tileTag").textContent = tag;
+
+  $("days").replaceChildren();
+  for (let d = new Date(BOUGHT); d <= WIN_END; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)){
+    const c = el("div", "day" + (d < t ? " past" : "") + (+d === +t ? " today" : "") + (d >= WIN_START ? " win" : ""));
+    c.append(el("span", null, d.toLocaleDateString("en-AU", {weekday: "short"})), el("b", null, d.getDate()));
+    if (+d === +t) c.setAttribute("aria-current", "date");
+    $("days").append(c);
+  }
+  $("stages").replaceChildren(...STAGES.map((s, i) => {
+    const b = el("button", "stage" + (i < stage ? " done" : i === stage ? " now" : ""), s);
+    b.setAttribute("aria-pressed", i === stage);
+    b.onclick = () => saveTracker({manualStage: i});
+    return b;
+  }));
+  if (manual !== null){
+    const r = el("button", "reset", "Go back to the date estimate");
+    r.onclick = () => saveTracker({manualStage: null});
+    $("stages").append(r);
+  }
+  const n = data.tracker.tracking;
+  $("auspost").href = "https://auspost.com.au/mypost/track/" + (n ? "details/" + encodeURIComponent(n) : "");
+  if (document.activeElement !== $("trackNo")) $("trackNo").value = n;
+}
+$("trackNo").onchange = e => saveTracker({tracking: e.target.value.trim()});
+
+/* ---------- game cards ---------- */
+const artSrc = g => g.art ? "/_blob/" + g.art : g.slug ? "covers/" + g.slug + ".jpg" : null;
+function makeCart(g, tag = "div"){
+  const c = el(tag, "cart"), src = artSrc(g);
+  if (src){ const img = el("img"); img.src = src; img.alt = g.name; img.onerror = () => img.replaceWith(el("span", "txt", g.name)); c.append(img); }
+  else c.append(el("span", "txt", g.name));
+  return c;
+}
+let dropId = null, lastGames = "";
+function renderGames(){
+  const sig = JSON.stringify(data.games);
+  if (sig === lastGames) return;            // unchanged snapshot: leave a running drop animation alone
+  lastGames = sig;
+  const n = data.games.length, slots = Math.max(12, Math.ceil((n + 1) / 6) * 6);
+  const kids = [];
+  for (let i = 0; i < slots; i++){
+    const slot = el("div", "slot"), g = data.games[i];
+    if (g){
+      const cart = makeCart(g, "button");
+      cart.setAttribute("aria-label", g.name + ", " + g.status);
+      if (g.id === dropId){ cart.classList.add("drop"); dropId = null; }
+      cart.onclick = () => openGame(g.id);
+      const st = el("button", "st", g.status); st.dataset.s = g.status; st.title = "Change status";
+      st.onclick = () => put("games", g.id, {...body(g), status: STATUSES[(STATUSES.indexOf(g.status) + 1) % 4]}).catch(() => {});
+      slot.append(cart, st);
+    }
+    kids.push(slot);
+  }
+  const foot = el("div", "case-foot");
+  foot.append(el("span", null, n ? "Tap a card to change it" : "Your case is empty. Type a game above to add your first card."), el("span", null, n + " of " + slots + " slots"));
+  $("case").replaceChildren(...kids, foot);
+
+  $("mosaic").replaceChildren(...(n ? data.games.slice(0, 4).map(g => { const s = artSrc(g); if (!s) return el("div"); const i = el("img"); i.src = s; i.alt = ""; return i; })
+                                    : [el("div", "none", "No game cards yet")]));
+  if ($("gameDlg").open) fillGame();
+}
+
+let ac;
+function clickSound(delay){                  // the "ka-chik" of a card seating in its slot
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    ac.resume();
+    [0, .045].forEach((dt, k) => {
+      const t = ac.currentTime + delay + dt, o = ac.createOscillator(), g = ac.createGain();
+      o.type = "square"; o.frequency.setValueAtTime(k ? 3200 : 1800, t); o.frequency.exponentialRampToValueAtTime(400, t + .03);
+      g.gain.setValueAtTime(.12, t); g.gain.exponentialRampToValueAtTime(.001, t + .05);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + .06);
+    });
+  } catch {}
+}
+function findSlug(name){
+  const q = name.toLowerCase(), keys = Object.keys(CATALOG);
+  const exact = keys.find(k => CATALOG[k].toLowerCase() === q);
+  if (exact) return exact;
+  const partial = keys.filter(k => CATALOG[k].toLowerCase().includes(q));
+  return partial.length === 1 ? partial[0] : null;
+}
+$("addGame").onsubmit = async e => {
+  e.preventDefault();
+  const name = $("gameName").value.trim(); if (!name) return;
+  const slug = findSlug(name);
+  if (slug && data.games.some(g => g.slug === slug)) return toast(CATALOG[slug] + " is already in your case.");
+  const id = newId(); dropId = id;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  clickSound(reduce ? 0 : .36);
+  $("gameName").value = "";
+  try { await put("games", id, {slug, name: slug ? CATALOG[slug] : name, status: "Want", art: null, added: Date.now()}); } catch { return; }
+  $("case").querySelector(".slot:nth-child(" + data.games.length + ")")?.scrollIntoView({block: "nearest", behavior: reduce ? "auto" : "smooth"});
+};
+$("catalog").replaceChildren(...Object.values(CATALOG).map(t => { const o = el("option"); o.value = t; return o; }));
+
+let dlgId = null;
+function openGame(id){ dlgId = id; fillGame(); $("gameDlg").showModal(); }
+function fillGame(){
+  const g = data.games.find(x => x.id === dlgId);
+  if (!g){ $("gameDlg").close(); return; }
+  $("dlgCart").replaceChildren(makeCart(g)); $("dlgCart").firstChild.classList.add("big");
+  $("dlgName").textContent = g.name;
+  $("dlgSub").textContent = g.art ? "Your own cover art" : g.slug ? "Box art from the catalog" : "No cover art yet";
+  $("dlgStatus").replaceChildren(el("legend", null, "Status"), ...STATUSES.map(s => {
+    const b = el("button", null, s); b.type = "button"; b.dataset.s = s; b.setAttribute("aria-pressed", s === g.status);
+    b.onclick = () => put("games", g.id, {...body(g), status: s}).catch(() => {});
+    return b;
+  }));
+  $("dlgUpload").hidden = !assets;
+  $("dlgUploadTxt").textContent = g.art || g.slug ? "Use my own picture" : "Add cover art";
+}
+$("dlgFile").onchange = async e => {
+  const file = e.target.files[0], g = data.games.find(x => x.id === dlgId);
+  e.target.value = "";
+  if (!file || !g || !assets) return;
+  $("dlgUploadTxt").textContent = "Uploading…";
+  try {
+    const r = await assets.upload(file);
+    const old = g.art;
+    await put("games", g.id, {...body(g), art: r.id});
+    if (old) assets.delete(old).catch(() => {});
+  } catch (err) {
+    toast({too_large: "That picture is too big. 20 MB max.", unsupported_type: "Use a JPG, PNG, WebP or GIF.", rate_limited: "Too many uploads. Wait a moment and try again."}[err?.code] || "Couldn't upload that picture.");
+  }
+  fillGame();
+};
+$("dlgRemove").onclick = e => twoStep(e.currentTarget, "Tap again to remove", async () => {
+  const g = data.games.find(x => x.id === dlgId); if (!g) return;
+  $("gameDlg").close();
+  try { await put("games", g.id, null); if (g.art && assets) assets.delete(g.art).catch(() => {}); } catch {}
+});
+$("dlgDone").onclick = () => $("gameDlg").close();
+
+/* ---------- accessories ---------- */
+function renderAcc(){
+  const rows = data.acc.map(a => {
+    const row = el("div", "item" + (a.got ? " got" : ""));
+    const box = el("input"); box.type = "checkbox"; box.checked = a.got; box.id = "acc-" + a.id;
+    box.onchange = () => put("acc", a.id, {...body(a), got: box.checked}).catch(() => { box.checked = a.got; });
+    const nm = el("label", "nm", a.name); nm.htmlFor = box.id;
+    const x = el("button", "x", "Remove"); x.setAttribute("aria-label", "Remove " + a.name);
+    x.onclick = () => twoStep(x, "Sure?", () => put("acc", a.id, null).catch(() => {}));
+    row.append(box, nm, el("span", "pr", aud(a.price)), x);
+    return row;
+  });
+  $("accList").replaceChildren(...(rows.length ? rows : [el("div", "none", "Add the first thing you want for your Switch, like a case or a screen protector.")]));
+  const left = data.acc.filter(a => !a.got).reduce((s, a) => s + a.price, 0);
+  const spent = data.acc.filter(a => a.got).reduce((s, a) => s + a.price, 0);
+  $("accLeft").textContent = $("accTile").textContent = aud(left);
+  $("accSpent").textContent = aud(spent);
+  $("accCount").textContent = data.acc.length ? data.acc.filter(a => a.got).length + " of " + data.acc.length + " bought" : "Nothing added yet";
+}
+$("addAcc").onsubmit = e => {
+  e.preventDefault();
+  const name = $("accName").value.trim(); if (!name) return;
+  const price = Math.max(0, Math.round((Number($("accPrice").value) || 0) * 100) / 100);
+  put("acc", newId(), {name, price, got: false, added: Date.now()}).catch(() => {});
+  $("accName").value = ""; $("accPrice").value = ""; $("accName").focus();
+};
+
+const render = {games: renderGames, acc: renderAcc};
+
+/* ---------- album ---------- */
+$("albumGrid").replaceChildren(...Array.from({length: 10}, (_, i) => {
+  const b = el("button"), img = el("img"); img.src = "console/ebay-" + (i + 1) + ".jpg"; img.alt = "Listing photo " + (i + 1); img.loading = "lazy";
+  b.onclick = () => { $("photoBig").src = img.src; $("photoBig").alt = img.alt; $("photoDlg").showModal(); };
+  b.append(img); return b;
+}));
+$("photoDlg").onclick = e => { if (e.target === $("photoDlg")) $("photoDlg").close(); };
+
+/* ---------- home menu and the tile-to-fullscreen launch ---------- */
+const tiles = [...document.querySelectorAll(".tile")];
+let sel = 0, openFrom = null;
+function select(i, scroll){
+  sel = (i + tiles.length) % tiles.length;
+  tiles.forEach((t, k) => t.classList.toggle("on", k === sel));
+  $("label").textContent = tiles[sel].dataset.label;
+  if (scroll) tiles[sel].scrollIntoView({block: "nearest", inline: "nearest", behavior: "smooth"});
+}
+const rectInset = node => { const r = node.getBoundingClientRect(); return `inset(${r.top}px ${innerWidth - r.right}px ${innerHeight - r.bottom}px ${r.left}px round 3px)`; };
+function open(id, from, focusId){
+  const s = $(id); openFrom = from;
+  s.style.transition = "none"; s.style.clipPath = rectInset(from); s.offsetHeight; s.style.transition = "";
+  s.classList.add("open"); s.style.clipPath = "inset(0 round 0)"; s.scrollTop = 0;
+  setTimeout(() => (focusId ? $(focusId) : s.querySelector(".back")).focus({preventScroll: true}), 320);
+}
+function close(){
+  const s = document.querySelector(".screen.open"); if (!s) return;
+  s.style.clipPath = rectInset(openFrom); s.classList.remove("open"); openFrom.focus({preventScroll: true});
+}
+tiles.forEach((t, i) => { t.onmouseenter = t.onfocus = () => select(i); });
+document.querySelectorAll("[data-open]").forEach(b => b.onclick = () =>
+  open(b.dataset.open, b.classList.contains("tile") ? b : tiles.find(t => t.dataset.open === b.dataset.open), b.dataset.focus));
+document.querySelectorAll(".back").forEach(b => b.onclick = close);
+addEventListener("keydown", e => {
+  if (document.querySelector("dialog[open]")) return;
+  if (e.target.matches("input")) { if (e.key === "Escape") close(); return; }
+  if (document.querySelector(".screen.open")){ if (e.key === "Escape" || e.key.toLowerCase() === "b") close(); return; }
+  if (e.key === "ArrowRight"){ select(sel + 1, true); tiles[sel].focus(); }
+  else if (e.key === "ArrowLeft"){ select(sel - 1, true); tiles[sel].focus(); }
+  else if (e.key.toLowerCase() === "a" && !e.metaKey && !e.ctrlKey){ tiles[sel].click(); }
+});
+
+function tick(){ $("clock").textContent = new Date().toLocaleTimeString("en-AU", {hour: "numeric", minute: "2-digit"}); }
+tick(); setInterval(tick, 15000);
+navigator.getBattery?.().then(b => {
+  const show = () => { $("batt").hidden = false; $("batt").querySelector("b").style.setProperty("--lvl", b.level * 100 + "%"); $("batt").querySelector("span").textContent = Math.round(b.level * 100) + "%"; };
+  show(); b.onlevelchange = show;
+}).catch(() => {});
+
+select(0); renderTrack(); renderGames(); renderAcc();
+
+/* ---------- live data ---------- */
+(async () => {
+  db = await window.claude?.use?.("db") ?? null;
+  if (!db){ $("saveNote").textContent = "This copy doesn't save. Open it on Claude to keep changes."; return; }
+  assets = await window.claude.use("assets");
+  const dead = () => toast("Lost the connection to your saved data. Reload the page.");
+  db.collection("games").orderBy("added").onSnapshot(s => { data.games = s.docs.map(d => cleanGame(d.id, d.data())); renderGames(); }, dead);
+  db.collection("acc").orderBy("added").onSnapshot(s => { data.acc = s.docs.map(d => cleanAcc(d.id, d.data())); renderAcc(); }, dead);
+  db.doc("tracker/main").onSnapshot(s => {
+    const d = s.data() || {};
+    data.tracker = {manualStage: Number.isInteger(d.manualStage) && d.manualStage >= 0 && d.manualStage < 5 ? d.manualStage : null, tracking: String(d.tracking || "").slice(0, 60)};
+    renderTrack();
+  }, dead);
+})();
+</script>
