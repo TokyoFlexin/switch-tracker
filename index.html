@@ -46,9 +46,16 @@ button{cursor:pointer;background:none;border:0;padding:0}
 @keyframes pulse{to{outline-color:#8be6f9}}
 .tile img{width:100%;height:100%;object-fit:cover;display:block}
 .tile .tag{position:absolute;left:0;bottom:0;background:var(--red);color:#fff;font:400 15px/1 var(--display);padding:9px 12px 8px}
-.mosaic{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;height:100%;gap:2px;background:var(--tile)}
-.mosaic .mtxt{display:flex;align-items:flex-end;padding:8px;overflow:hidden;font:400 12px/1.1 var(--display);color:var(--red);background:var(--bg);text-align:left}
-.mosaic .none{grid-column:1/-1;grid-row:1/-1;display:grid;place-items:center;text-align:center;padding:16px;color:var(--muted);font-size:14px}
+.tile.game{display:grid;place-items:center}
+.tile.game .stand{width:54%;filter:drop-shadow(0 8px 10px rgba(0,0,0,.28));transition:transform .2s}
+.tile.game:hover .stand,.tile.game.on .stand{transform:translateY(-5px)}
+.tile.game .cart{max-width:none}
+.case-tile{background:var(--case);color:#fff;display:flex;flex-direction:column;justify-content:space-between;padding:16px;text-align:left}
+.case-tile .mini{display:grid;grid-template-columns:repeat(3,22px);gap:5px}
+.case-tile .mini i{height:28px;border-radius:4px;background:var(--slot);box-shadow:inset 0 2px 3px rgba(0,0,0,.6)}
+.case-tile .mini i.on{background:#7a7a80;box-shadow:none}
+.case-tile strong{display:block;font:400 clamp(34px,5vw,54px)/1 var(--display)}
+.case-tile small{font-size:13px;color:#c9c9c9}
 .acc-tile{display:flex;flex-direction:column;justify-content:space-between;height:100%;padding:16px;text-align:left}
 .acc-tile small{color:var(--muted);font-size:13px}
 .acc-tile strong{font:400 clamp(26px,4vw,40px)/1 var(--display);color:var(--red)}
@@ -191,8 +198,8 @@ dialog::backdrop{background:rgba(40,0,4,.6)}
       <img src="console/ebay-3.jpg" alt="Your white Switch OLED, from the eBay listing">
       <span class="tag" id="tileTag"></span>
     </button>
-    <button class="tile" role="listitem" data-open="games" data-label="Game cards" aria-label="Game cards">
-      <div class="mosaic" id="mosaic"></div>
+    <button class="tile case-tile" role="listitem" data-open="games" data-label="All game cards" id="caseTile">
+      <span class="mini" id="mini" aria-hidden="true"></span><span><strong id="caseCount">0</strong><small id="caseSub"></small></span>
     </button>
     <button class="tile" role="listitem" data-open="acc" data-label="Accessories">
       <div class="acc-tile"><small>Left to spend</small><strong id="accTile">AU$0</strong><small id="accCount"></small></div>
@@ -408,8 +415,20 @@ function renderGames(){
   foot.append(el("span", null, n ? "Tap a card to change it" : "Your case is empty. Type a game above to add your first card."), el("span", null, n + " of " + slots + " slots"));
   $("case").replaceChildren(...kids, foot);
 
-  $("mosaic").replaceChildren(...(n ? data.games.slice(0, 4).map(g => { const s = artSrc(g); if (!s) return el("div", "mtxt", g.name); const i = el("img"); i.src = s; i.alt = ""; return i; })
-                                    : [el("div", "none", "No game cards yet")]));
+  // Home row: one tile per game, the ones you're playing first, then newest, like the Switch's recent software.
+  document.querySelectorAll(".tile.game").forEach(t => t.remove());
+  const shown = [...data.games].sort((a, b) => (b.status === "Playing") - (a.status === "Playing") || b.added - a.added).slice(0, 8);
+  $("caseTile").before(...shown.map(g => {
+    const t = el("button", "tile game"), stand = el("span", "stand");
+    t.setAttribute("role", "listitem"); t.setAttribute("aria-label", g.name + ", " + g.status);
+    t.dataset.open = "games"; t.dataset.label = g.name + " · " + g.status;
+    stand.append(makeCart(g)); t.append(stand);
+    return t;
+  }));
+  $("caseCount").textContent = n;
+  $("caseSub").textContent = n === 1 ? "game card" : n ? "game cards" : "Add your first game";
+  $("mini").replaceChildren(...Array.from({length: 6}, (_, i) => el("i", i < n ? "on" : "")));
+  select(Math.min(sel, tiles().length - 1));
   if ($("gameDlg").open) fillGame();
 }
 
@@ -521,13 +540,14 @@ $("albumGrid").replaceChildren(...Array.from({length: 10}, (_, i) => {
 $("photoDlg").onclick = e => { if (e.target === $("photoDlg")) $("photoDlg").close(); };
 
 /* ---------- home menu and the tile-to-fullscreen launch ---------- */
-const tiles = [...document.querySelectorAll(".tile")];
+const tiles = () => [...document.querySelectorAll(".tile")];
 let sel = 0, openFrom = null;
 function select(i, scroll){
-  sel = (i + tiles.length) % tiles.length;
-  tiles.forEach((t, k) => t.classList.toggle("on", k === sel));
-  $("label").textContent = tiles[sel].dataset.label;
-  if (scroll) tiles[sel].scrollIntoView({block: "nearest", inline: "nearest", behavior: "smooth"});
+  const all = tiles();
+  sel = (i + all.length) % all.length;
+  all.forEach((t, k) => t.classList.toggle("on", k === sel));
+  $("label").textContent = all[sel].dataset.label;
+  if (scroll) all[sel].scrollIntoView({block: "nearest", inline: "nearest", behavior: "smooth"});
 }
 const rectInset = node => { const r = node.getBoundingClientRect(); return `inset(${r.top}px ${innerWidth - r.right}px ${innerHeight - r.bottom}px ${r.left}px round 3px)`; };
 function open(id, from, focusId){
@@ -538,19 +558,24 @@ function open(id, from, focusId){
 }
 function close(){
   const s = document.querySelector(".screen.open"); if (!s) return;
+  if (!openFrom.isConnected) openFrom = $("caseTile");     // its game tile was redrawn while the screen was open
   s.style.clipPath = rectInset(openFrom); s.classList.remove("open"); openFrom.focus({preventScroll: true});
 }
-tiles.forEach((t, i) => { t.onmouseenter = t.onfocus = () => select(i); });
-document.querySelectorAll("[data-open]").forEach(b => b.onclick = () =>
-  open(b.dataset.open, b.classList.contains("tile") ? b : tiles.find(t => t.dataset.open === b.dataset.open), b.dataset.focus));
+const row = document.querySelector(".row");
+row.addEventListener("mouseover", e => { const t = e.target.closest(".tile"); if (t && !t.classList.contains("on")) select(tiles().indexOf(t)); });
+row.addEventListener("focusin", e => { const t = e.target.closest(".tile"); if (t) select(tiles().indexOf(t)); });
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-open]"); if (!b) return;
+  open(b.dataset.open, b.classList.contains("tile") ? b : document.querySelector('.tile:not(.game)[data-open="' + b.dataset.open + '"]'), b.dataset.focus);
+});
 document.querySelectorAll(".back").forEach(b => b.onclick = close);
 addEventListener("keydown", e => {
   if (document.querySelector("dialog[open]")) return;
-  if (e.target.matches("input")) { if (e.key === "Escape") close(); return; }
+  if (e.target.matches?.("input")) { if (e.key === "Escape") close(); return; }
   if (document.querySelector(".screen.open")){ if (e.key === "Escape" || e.key.toLowerCase() === "b") close(); return; }
-  if (e.key === "ArrowRight"){ select(sel + 1, true); tiles[sel].focus(); }
-  else if (e.key === "ArrowLeft"){ select(sel - 1, true); tiles[sel].focus(); }
-  else if (e.key.toLowerCase() === "a" && !e.metaKey && !e.ctrlKey){ tiles[sel].click(); }
+  if (e.key === "ArrowRight"){ select(sel + 1, true); tiles()[sel].focus(); }
+  else if (e.key === "ArrowLeft"){ select(sel - 1, true); tiles()[sel].focus(); }
+  else if (e.key.toLowerCase() === "a" && !e.metaKey && !e.ctrlKey){ tiles()[sel].click(); }
 });
 
 function tick(){ $("clock").textContent = new Date().toLocaleTimeString("en-AU", {hour: "numeric", minute: "2-digit"}); }
