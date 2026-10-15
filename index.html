@@ -47,6 +47,7 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .tile img{width:100%;height:100%;object-fit:cover;display:block}
 .tile .tag{position:absolute;left:0;bottom:0;background:var(--red);color:#fff;font:400 15px/1 var(--display);padding:9px 12px 8px}
 .mosaic{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;height:100%;gap:2px;background:var(--tile)}
+.mosaic .mtxt{display:flex;align-items:flex-end;padding:8px;overflow:hidden;font:400 12px/1.1 var(--display);color:var(--red);background:var(--bg);text-align:left}
 .mosaic .none{grid-column:1/-1;grid-row:1/-1;display:grid;place-items:center;text-align:center;padding:16px;color:var(--muted);font-size:14px}
 .acc-tile{display:flex;flex-direction:column;justify-content:space-between;height:100%;padding:16px;text-align:left}
 .acc-tile small{color:var(--muted);font-size:13px}
@@ -407,7 +408,7 @@ function renderGames(){
   foot.append(el("span", null, n ? "Tap a card to change it" : "Your case is empty. Type a game above to add your first card."), el("span", null, n + " of " + slots + " slots"));
   $("case").replaceChildren(...kids, foot);
 
-  $("mosaic").replaceChildren(...(n ? data.games.slice(0, 4).map(g => { const s = artSrc(g); if (!s) return el("div"); const i = el("img"); i.src = s; i.alt = ""; return i; })
+  $("mosaic").replaceChildren(...(n ? data.games.slice(0, 4).map(g => { const s = artSrc(g); if (!s) return el("div", "mtxt", g.name); const i = el("img"); i.src = s; i.alt = ""; return i; })
                                     : [el("div", "none", "No game cards yet")]));
   if ($("gameDlg").open) fillGame();
 }
@@ -429,7 +430,8 @@ function findSlug(name){
   const q = name.toLowerCase(), keys = Object.keys(CATALOG);
   const exact = keys.find(k => CATALOG[k].toLowerCase() === q);
   if (exact) return exact;
-  const partial = keys.filter(k => CATALOG[k].toLowerCase().includes(q));
+  const words = q.split(/[^a-z0-9]+/).filter(Boolean);   // "zelda tears" finds "Zelda: Tears of the Kingdom"
+  const partial = keys.filter(k => { const t = CATALOG[k].toLowerCase(); return words.every(w => t.includes(w)); });
   return partial.length === 1 ? partial[0] : null;
 }
 $("addGame").onsubmit = e => {
